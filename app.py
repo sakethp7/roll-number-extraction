@@ -16,7 +16,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 # --- 1. Setup & Configuration ---
 
 load_dotenv()
-gemini_llm=ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite",api_key=os.getenv("GEMINI_API_KEY"))
+gemini_llm=ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite",api_key=st.secrets['GEMINI_API_KEY'])
 class PagePairData(BaseModel):
     """Extracted data from a pair of pages."""
     roll_number_1: str = Field("N/A", description="Roll number from the first image (Image 1).")
