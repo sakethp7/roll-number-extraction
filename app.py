@@ -182,7 +182,7 @@ def process_single_page_thread(
 # --- 4. Streamlit App Main Logic (MODIFIED) ---
 
 st.set_page_config(layout="wide")
-st.title("🚀 Robust PDF Student Sorter (with Retry & LLM Choice)")
+st.title("Robust PDF Student Sorter")
 st.markdown("Handles odd pages, API errors, and multiple LLMs. Processes 2 pages per call.")
 
 # --- NEW: Model Selection ---
