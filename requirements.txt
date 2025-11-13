@@ -1,0 +1,7 @@
+streamlit
+langchain
+langchain-google-genai
+pypdf==3.9.0
+langchain-groq
+python-dotenv
+pdf2image
