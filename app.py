@@ -3,23 +3,20 @@ import streamlit as st
 import base64
 import threading
 import time
-import re
+import re 
 from io import BytesIO
 from pypdf import PdfMerger, PdfReader
-import fitz  # PyMuPDF
-from PIL import Image
+from pdf2image import convert_from_bytes
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 from collections import defaultdict
 from langchain_google_genai import ChatGoogleGenerativeAI
-
 # --- 1. Setup & Configuration ---
 
 load_dotenv()
-# We no longer initialize a global LLM here.
-
+gemini_llm=ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite",api_key=os.getenv("GEMINI_API_KEY"))
 class PagePairData(BaseModel):
     """Extracted data from a pair of pages."""
     roll_number_1: str = Field("N/A", description="Roll number from the first image (Image 1).")
@@ -34,38 +31,22 @@ class SinglePageData(BaseModel):
 
 # --- 2. Helper Functions ---
 
-def get_llm_instance(model_name):
-    """Helper to initialize the correct LLM based on the selected model name."""
-    if model_name.startswith("gemini"):
-        return ChatGoogleGenerativeAI(
-            model=model_name,
-            api_key=os.getenv("GEMINI_API_KEY")
-        )
-    else:
-        # Assumes Groq for Llama/Scout models
-        return ChatGroq(
-            model=model_name,
-            api_key=os.getenv("GROQ_API_KEY")
-        )
-
 @st.cache_resource
-def get_pair_vision_llm(model_name):
-    """Gets the structured output LLM for page pairs, cached per model name."""
+def get_pair_vision_llm():
     try:
-        llm = get_llm_instance(model_name)
+        llm=gemini_llm
         return llm.with_structured_output(PagePairData)
     except Exception as e:
-        st.error(f"Error initializing PAIR LLM ({model_name}): {e}")
+        st.error(f"Error initializing PAIR LLM: {e}")
         st.stop()
 
 @st.cache_resource
-def get_single_vision_llm(model_name):
-    """Gets the structured output LLM for single pages, cached per model name."""
+def get_single_vision_llm():
     try:
-        llm = get_llm_instance(model_name)
+        llm = gemini_llm
         return llm.with_structured_output(SinglePageData)
     except Exception as e:
-        st.error(f"Error initializing SINGLE LLM ({model_name}): {e}")
+        st.error(f"Error initializing SINGLE LLM: {e}")
         st.stop()
 
 def merge_pdfs_to_bytes(pdf_files):
@@ -138,8 +119,8 @@ def invoke_with_retry(llm, message, max_retries=3):
 
 
 def process_page_pair_thread(
-    pdf_index_1, pil_image_1,
-    pdf_index_2, pil_image_2,
+    pdf_index_1, pil_image_1, 
+    pdf_index_2, pil_image_2, 
     llm, semaphore, results_list
 ):
     base64_image_1 = None
@@ -157,12 +138,10 @@ def process_page_pair_thread(
         results_list.append((pdf_index_2, "Error", str(e)))
     finally:
         del base64_image_1, base64_image_2
-        pil_image_1.close()
-        pil_image_2.close()
         semaphore.release()
 
 def process_single_page_thread(
-    pdf_index_1, pil_image_1,
+    pdf_index_1, pil_image_1, 
     llm, semaphore, results_list
 ):
     base64_image_1 = None
@@ -176,46 +155,33 @@ def process_single_page_thread(
         results_list.append((pdf_index_1, "Error", str(e)))
     finally:
         del base64_image_1
-        pil_image_1.close()
         semaphore.release()
 
-# --- 4. Streamlit App Main Logic (MODIFIED) ---
+# --- 4. Streamlit App Main Logic (Unchanged) ---
 
 st.set_page_config(layout="wide")
-st.title("Robust PDF Student Sorter")
-st.markdown("Handles odd pages, API errors, and multiple LLMs. Processes 2 pages per call.")
-
-# --- NEW: Model Selection ---
-model_option = st.selectbox(
-    "Choose your LLM:",
-    (
-        "gemini-2.5-flash-lite",
-        "meta-llama/llama-4-maverick-17b-128e-instruct",
-        "meta-llama/scout"
-    ),
-    help="Gemini models require GEMINI_API_KEY. Llama/Scout models use GROQ_API_KEY."
-)
+st.title("🚀 Robust PDF Student Sorter (with Retry)")
+st.markdown("Handles odd pages and API errors. Processes 2 pages per call.")
 
 MAX_CONCURRENT_CALLS = 10
 llm_semaphore = threading.BoundedSemaphore(MAX_CONCURRENT_CALLS)
-IMAGE_BATCH_SIZE = 20
+IMAGE_BATCH_SIZE = 20 
 
-# --- NEW: Initialize LLMs based on selection ---
-llm_pair = get_pair_vision_llm(model_option)
-llm_single = get_single_vision_llm(model_option)
+llm_pair = get_pair_vision_llm()
+llm_single = get_single_vision_llm()
 
 uploaded_files = st.file_uploader(
-    "Upload your PDF files (will be merged)",
-    type="pdf",
+    "Upload your PDF files (will be merged)", 
+    type="pdf", 
     accept_multiple_files=True
 )
 
 if uploaded_files:
-    if st.button(f"Start Processing (Using {model_option} @ {MAX_CONCURRENT_CALLS} parallel requests)"):
-
+    if st.button(f"Start Processing (Using {MAX_CONCURRENT_CALLS} parallel requests)"):
+        
         overall_start_time = time.time()
         results_list = []
-
+        
         with st.spinner("Processing..."):
             try:
                 # ... (Steps 1, 2, and 3 are identical to the previous code) ...
@@ -229,48 +195,31 @@ if uploaded_files:
 
                 with st.status(f"3/3 - Processing {total_pages} pages...", expanded=True) as main_status:
                     threads = []
-                    
-                    # Open the PDF document *once* for batch processing
-                    pdf_doc = fitz.open(stream=merged_pdf_bytes, filetype="pdf")
-                    
                     for batch_start_page in range(1, total_pages + 1, IMAGE_BATCH_SIZE):
                         batch_end_page = min(batch_start_page + IMAGE_BATCH_SIZE - 1, total_pages)
                         main_status.update(label=f"Converting pages {batch_start_page}-{batch_end_page} to images...")
                         
-                        # --- REPLACEMENT LOGIC: Use PyMuPDF (fitz) ---
-                        batch_images = []
-                        try:
-                            # PyMuPDF is 0-indexed, so convert 1-indexed page numbers
-                            for page_num in range(batch_start_page - 1, batch_end_page):
-                                page = pdf_doc.load_page(page_num)
-                                pix = page.get_pixmap(dpi=150)
-                                
-                                # Convert pixmap to PIL Image
-                                if pix.alpha: # Handle transparency if any
-                                    pil_image = Image.frombytes("RGBA", (pix.width, pix.height), pix.samples)
-                                    pil_image = pil_image.convert("RGB") # Convert to RGB as JPEG doesn't support alpha
-                                else:
-                                    pil_image = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-                                batch_images.append(pil_image)
-                        except Exception as e:
-                            st.error(f"Error converting PDF pages {batch_start_page}-{batch_end_page}: {e}")
-                            st.stop()
-                        # --- END REPLACEMENT LOGIC ---
+                        batch_images = convert_from_bytes(
+                            merged_pdf_bytes, 
+                            dpi=150, 
+                            first_page=batch_start_page, 
+                            last_page=batch_end_page
+                        )
                         
                         main_status.update(label=f"Spawning threads for pages {batch_start_page}-{batch_end_page}...")
 
                         for i in range(0, len(batch_images), 2):
                             pdf_index_1 = batch_start_page + i
                             pil_image_1 = batch_images[i]
-
+                            
                             if i + 1 < len(batch_images):
                                 pdf_index_2 = batch_start_page + i + 1
                                 pil_image_2 = batch_images[i+1]
                                 thread = threading.Thread(
                                     target=process_page_pair_thread,
                                     args=(
-                                        pdf_index_1, pil_image_1,
-                                        pdf_index_2, pil_image_2,
+                                        pdf_index_1, pil_image_1, 
+                                        pdf_index_2, pil_image_2, 
                                         llm_pair, llm_semaphore, results_list
                                     )
                                 )
@@ -278,7 +227,7 @@ if uploaded_files:
                                 thread = threading.Thread(
                                     target=process_single_page_thread,
                                     args=(
-                                        pdf_index_1, pil_image_1,
+                                        pdf_index_1, pil_image_1, 
                                         llm_single, llm_semaphore, results_list
                                     )
                                 )
@@ -287,14 +236,12 @@ if uploaded_files:
 
                         for thread in threads:
                             thread.join()
-
+                        
                         threads = []
-                        del batch_images # Clear memory
+                        del batch_images
                         st.write(f"Batch {batch_start_page}-{batch_end_page} complete.")
-                    
-                    pdf_doc.close() # Close the document after all batches
                     st.success("All batches processed!")
-
+                
                 overall_end_time = time.time()
                 total_duration = overall_end_time - overall_start_time
 
@@ -302,7 +249,7 @@ if uploaded_files:
                 st.error(f"An error occurred: {e}")
                 st.stop()
 
-        # --- 5. Post-Processing & Display (Unchanged) ---
+        # --- 5. Post-Processing & Display (MODIFIED) ---
         
         st.header(f"Processing Complete")
         st.metric("Total Time Taken", f"{total_duration:.2f} seconds")
@@ -332,7 +279,7 @@ if uploaded_files:
             and uses it for sorting.
             """
             # page_tuple is ('1', 60)
-            page_str = str(page_tuple[0])
+            page_str = str(page_tuple[0]) 
             match = re.search(r'\d+', page_str) # Find the first number
             if match:
                 try:
@@ -357,7 +304,7 @@ if uploaded_files:
             # print('hello')
             # Sort it by the *student's page number* (the first item in the tuple)
             # sorted_list will be: [('1', 60), ('2', 61), ('3', 58), ('4', 59)]
-            sorted_list = sorted(pages_list, key=safe_int_sort)
+            sorted_list = sorted(pages_list, key=safe_int_sort) 
             # print(sorted_list)
             # Extract just the PDF indices from this sorted list
             # ordered_pdf_indices will be: [60, 61, 58, 59]
