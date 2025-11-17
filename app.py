@@ -18,7 +18,6 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 # --- 1. Setup & Configuration ---
 
 load_dotenv()
-# We no longer initialize a global LLM here.
 
 class PagePairData(BaseModel):
     """Extracted data from a pair of pages."""
@@ -84,6 +83,7 @@ def encode_pil_image_to_base64(image):
         image.save(buffered, format="JPEG", quality=75)
         return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
+# --- MODIFIED PROMPT FUNCTION FOR 2 PAGES ---
 def create_2_page_llm_message(base64_image_1, base64_image_2):
     return [
         HumanMessage(
@@ -92,9 +92,30 @@ def create_2_page_llm_message(base64_image_1, base64_image_2):
                     "type": "text",
                     "text": """
                     Analyze these two images. Image 1 is the first, Image 2 is the second.
-                    For Image 1: Extract 'roll_number' (top-right)(only numeric) and 'page_number' (bottom, as a digit like '1', '2', or '10').
-                    For Image 2: Extract 'roll_number' (top-right)(only numeric) and 'page_number' (bottom, as a digit like '1', '2', or '10').
-                    If you cannot find a value, return 'N/A'.
+                    Your task is to extract the 'roll_number' and 'page_number' for both images following strict formatting rules.
+
+                    ### RULES SECTION:
+                    1. **DIGITS ONLY:** The extracted values must contain ONLY numeric digits (0-9). Do not include any alphabets, symbols, or special characters.
+                       - Incorrect: "A52", "Roll: 12", "Page-1"
+                       - Correct: "52", "12", "1"
+                    
+                    2. **NO ALPHANUMERIC:** If the text on the page says "B-10" or "No. 5", extract only the number "10" or "5". Ignore all letters.
+
+                    3. **LEADING ZEROS:** You must remove any leading zeros from the numbers. Treat numbers mathematically.
+                       - If the roll number is "01", return "1".
+                       - If the page number is "005", return "5".
+                       - If the roll number is "099", return "99".
+
+                    4. **LOCATIONS:**
+                       - 'roll_number' is typically located in the top-right area.
+                       - 'page_number' is typically located at the bottom of the page.
+
+                    5. **MISSING DATA:** If you absolutely cannot find a value after checking carefully, return 'N/A'.
+
+                    ### TASKS:
+                    For Image 1: Extract 'roll_number' and 'page_number' applying the rules above.
+                    For Image 2: Extract 'roll_number' and 'page_number' applying the rules above.
+
                     Respond *only* with the JSON.
                     """
                 },
@@ -104,6 +125,7 @@ def create_2_page_llm_message(base64_image_1, base64_image_2):
         )
     ]
 
+# --- MODIFIED PROMPT FUNCTION FOR 1 PAGE ---
 def create_1_page_llm_message(base64_image_1):
     return [
         HumanMessage(
@@ -111,8 +133,30 @@ def create_1_page_llm_message(base64_image_1):
                 {
                     "type": "text",
                     "text": """
-                    Analyze this image. Extract 'roll_number' (top-right) and 'page_number' (bottom, as a digit like '1', '2', or '10').
-                    If you cannot find a value, return 'N/A'.
+                    Analyze this image.
+                    Your task is to extract the 'roll_number' and 'page_number' following strict formatting rules.
+
+                    ### RULES SECTION:
+                    1. **DIGITS ONLY:** The extracted values must contain ONLY numeric digits (0-9). Do not include any alphabets, symbols, or special characters.
+                       - Incorrect: "A52", "Roll: 12", "Page-1"
+                       - Correct: "52", "12", "1"
+                    
+                    2. **NO ALPHANUMERIC:** If the text on the page says "B-10" or "No. 5", extract only the number "10" or "5". Ignore all letters.
+
+                    3. **LEADING ZEROS:** You must remove any leading zeros from the numbers. Treat numbers mathematically.
+                       - If the roll number is "01", return "1".
+                       - If the page number is "005", return "5".
+                       - If the roll number is "099", return "99".
+
+                    4. **LOCATIONS:**
+                       - 'roll_number' is typically located in the top-right area.
+                       - 'page_number' is typically located at the bottom of the page.
+
+                    5. **MISSING DATA:** If you absolutely cannot find a value after checking carefully, return 'N/A'.
+
+                    ### TASKS:
+                    Extract 'roll_number' and 'page_number' applying the rules above.
+
                     Respond *only* with the JSON.
                     """
                 },
@@ -179,21 +223,21 @@ def process_single_page_thread(
         pil_image_1.close()
         semaphore.release()
 
-# --- 4. Streamlit App Main Logic (MODIFIED) ---
+# --- 4. Streamlit App Main Logic ---
 
 st.set_page_config(layout="wide")
 st.title("Robust PDF Student Sorter")
 st.markdown("Handles odd pages, API errors, and multiple LLMs. Processes 2 pages per call.")
 
-# --- NEW: Model Selection ---
+# --- Model Selection ---
 model_option = st.selectbox(
     "Choose your LLM:",
     (
-        "gemini-2.5-flash-lite",
-         "gemini-2.5-flash",
+        "gemini-2.0-flash-lite-preview-02-05",
          "gemini-2.0-flash",
-        "meta-llama/llama-4-maverick-17b-128e-instruct",
-        "meta-llama/llama-4-scout-17b-16e-instruct"
+         "gemini-1.5-flash",
+        "meta-llama/llama-3.2-90b-vision-preview",
+        "meta-llama/llama-3.2-11b-vision-preview"
     ),
     help="Gemini models require GEMINI_API_KEY. Llama/Scout models use GROQ_API_KEY."
 )
@@ -202,7 +246,7 @@ MAX_CONCURRENT_CALLS = 10
 llm_semaphore = threading.BoundedSemaphore(MAX_CONCURRENT_CALLS)
 IMAGE_BATCH_SIZE = 20
 
-# --- NEW: Initialize LLMs based on selection ---
+# --- Initialize LLMs based on selection ---
 llm_pair = get_pair_vision_llm(model_option)
 llm_single = get_single_vision_llm(model_option)
 
@@ -220,7 +264,6 @@ if uploaded_files:
 
         with st.spinner("Processing..."):
             try:
-                # ... (Steps 1, 2, and 3 are identical to the previous code) ...
                 with st.status("1/3 - Merging PDFs..."):
                     merged_pdf_bytes = merge_pdfs_to_bytes(uploaded_files)
                 with st.status("2/3 - Getting page count..."):
@@ -239,7 +282,7 @@ if uploaded_files:
                         batch_end_page = min(batch_start_page + IMAGE_BATCH_SIZE - 1, total_pages)
                         main_status.update(label=f"Converting pages {batch_start_page}-{batch_end_page} to images...")
                         
-                        # --- REPLACEMENT LOGIC: Use PyMuPDF (fitz) ---
+                        # --- PyMuPDF (fitz) Logic ---
                         batch_images = []
                         try:
                             # PyMuPDF is 0-indexed, so convert 1-indexed page numbers
@@ -257,7 +300,6 @@ if uploaded_files:
                         except Exception as e:
                             st.error(f"Error converting PDF pages {batch_start_page}-{batch_end_page}: {e}")
                             st.stop()
-                        # --- END REPLACEMENT LOGIC ---
                         
                         main_status.update(label=f"Spawning threads for pages {batch_start_page}-{batch_end_page}...")
 
@@ -304,7 +346,7 @@ if uploaded_files:
                 st.error(f"An error occurred: {e}")
                 st.stop()
 
-        # --- 5. Post-Processing & Display (Unchanged) ---
+        # --- 5. Post-Processing & Display ---
         
         st.header(f"Processing Complete")
         st.metric("Total Time Taken", f"{total_duration:.2f} seconds")
@@ -321,30 +363,21 @@ if uploaded_files:
             st.error("No valid data could be extracted. Check your PDF and prompt.")
             st.stop()
 
-        # --- NEW LOGIC: Build ONE data structure first ---
-        # student_data will be: {'52': [('3', 58), ('4', 59), ('1', 60), ('2', 61)], ...}
+        # Build student data structure
         student_data = defaultdict(list)
         for (pdf_idx, roll_num, sheet_page_num) in valid_results:
             student_data[roll_num].append((sheet_page_num, pdf_idx))
         
-        # --- NEW LOGIC: Define the sorting function ---
+        # Define sorting function
         def safe_int_sort(page_tuple):
-            """
-            Extracts the first number found in the page string (e.g., 'Page 1', '1', 'page-2')
-            and uses it for sorting.
-            """
-            # page_tuple is ('1', 60)
             page_str = str(page_tuple[0])
             match = re.search(r'\d+', page_str) # Find the first number
             if match:
                 try:
-                    # print(match.group(0))
                     return int(match.group(0))
                 except ValueError:
-                    # print('9999')
                     return 99999 # Fallback (put at end)
             else:
-                # print('99999')
                 return 99999 # Fallback (put at end)
 
         # --- 1. The Mapper (Roll -> PDF Indices in student's order) ---
@@ -352,25 +385,14 @@ if uploaded_files:
         st.markdown("This table shows all PDF pages for each student, sorted by the student's **answer sheet page number**.")
         
         display_map = []
-        # Sort by roll number for the table
         for roll_num in sorted(student_data.keys()):
-            # Get the list of pages, e.g., [('3', 58), ('4', 59), ('1', 60), ('2', 61)]
             pages_list = student_data[roll_num]
-            # print('hello')
-            # Sort it by the *student's page number* (the first item in the tuple)
-            # sorted_list will be: [('1', 60), ('2', 61), ('3', 58), ('4', 59)]
             sorted_list = sorted(pages_list, key=safe_int_sort)
-            # print(sorted_list)
-            # Extract just the PDF indices from this sorted list
-            # ordered_pdf_indices will be: [60, 61, 58, 59]
             ordered_pdf_indices = [pdf_idx for (sheet_page, pdf_idx) in sorted_list]
-            
-            # Join them for display
             pages_str = ", ".join(map(str, ordered_pdf_indices))
-            
             display_map.append({"Roll Number": roll_num, "PDF Pages (in student's order)": pages_str})
         
-        st.dataframe(display_map, width="stretch")
+        st.dataframe(display_map, width=1000) # Removed "stretch" as it can be buggy in some versions, explicit width is safer
 
         # --- 2. The Sorter (Per-Student View) ---
         st.subheader("Student Answer Sheet Sorter")
@@ -380,7 +402,6 @@ if uploaded_files:
         selected_student = st.selectbox("Select Student Roll Number:", student_list)
 
         if selected_student:
-            # We already have the data, just need to re-sort it for display
             pages = student_data[selected_student]
             sorted_pages = sorted(pages, key=safe_int_sort)
             
@@ -391,4 +412,4 @@ if uploaded_files:
                     "Located at Main PDF Page": pdf_idx
                 })
             
-            st.dataframe(display_sorted, width='stretch')
+            st.dataframe(display_sorted, width=1000)
