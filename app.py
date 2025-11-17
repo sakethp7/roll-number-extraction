@@ -103,6 +103,7 @@ def create_2_page_llm_message(base64_image_1, base64_image_2):
             ]
         )
     ]
+
 def create_1_page_llm_message(base64_image_1):
     return [
         HumanMessage(
@@ -391,6 +392,3 @@ if uploaded_files:
                 })
             
             st.dataframe(display_sorted, width='stretch')
-
-
-
