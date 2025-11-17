@@ -233,11 +233,15 @@ st.markdown("Handles odd pages, API errors, and multiple LLMs. Processes 2 pages
 model_option = st.selectbox(
     "Choose your LLM:",
     (
-        "gemini-2.0-flash-lite-preview-02-05",
+         "gemini-2.5-flash-lite",
+
+         "gemini-2.5-flash",
+
          "gemini-2.0-flash",
-         "gemini-1.5-flash",
-        "meta-llama/llama-3.2-90b-vision-preview",
-        "meta-llama/llama-3.2-11b-vision-preview"
+
+        "meta-llama/llama-4-maverick-17b-128e-instruct",
+
+        "meta-llama/llama-4-scout-17b-16e-instruct"
     ),
     help="Gemini models require GEMINI_API_KEY. Llama/Scout models use GROQ_API_KEY."
 )
