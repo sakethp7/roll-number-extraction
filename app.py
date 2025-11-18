@@ -91,10 +91,31 @@ def create_2_page_llm_message(base64_image_1, base64_image_2):
                 {
                     "type": "text",
                     "text": """
-                    Analyze these two images. Image 1 is the first, Image 2 is the second.
-                    For Image 1: Extract 'roll_number' (top-right)(only numeric) and 'page_number' (bottom, as a digit like '1', '2', or '10').
-                    For Image 2: Extract 'roll_number' (top-right)(only numeric) and 'page_number' (bottom, as a digit like '1', '2', or '10').
-                    If you cannot find a value, return 'N/A'.
+                  Analyze these two images. Image 1 is the first, Image 2 is the second.
+                    Your task is to extract the 'roll_number' and 'page_number' for both images following strict formatting rules.
+
+                    ### RULES SECTION:
+                    1. **DIGITS ONLY:** The extracted values must contain ONLY numeric digits (0-9). Do not include any alphabets, symbols, or special characters.
+                       - Incorrect: "A52", "Roll: 12", "Page-1"
+                       - Correct: "52", "12", "1"
+                    
+                    2. **NO ALPHANUMERIC:** If the text on the page says "B-10" or "No. 5", extract only the number "10" or "5". Ignore all letters.
+
+                    3. **LEADING ZEROS:** You must remove any leading zeros from the numbers. Treat numbers mathematically.
+                       - If the roll number is "01", return "1".
+                       - If the page number is "005", return "5".
+                       - If the roll number is "099", return "99".
+
+                    4. **LOCATIONS:**
+                       - 'roll_number' is typically located in the top-right area.
+                       - 'page_number' is typically located at the bottom of the page.
+
+                    5. **MISSING DATA:** If you absolutely cannot find a value after checking carefully, return 'N/A'.
+
+                    ### TASKS:
+                    For Image 1: Extract 'roll_number' and 'page_number' applying the rules above.
+                    For Image 2: Extract 'roll_number' and 'page_number' applying the rules above.
+
                     Respond *only* with the JSON.
                     """
                 },
@@ -111,8 +132,30 @@ def create_1_page_llm_message(base64_image_1):
                 {
                     "type": "text",
                     "text": """
-                    Analyze this image. Extract 'roll_number' (top-right) and 'page_number' (bottom, as a digit like '1', '2', or '10').
-                    If you cannot find a value, return 'N/A'.
+                  Analyze this image.
+                    Your task is to extract the 'roll_number' and 'page_number' following strict formatting rules.
+
+                    ### RULES SECTION:
+                    1. **DIGITS ONLY:** The extracted values must contain ONLY numeric digits (0-9). Do not include any alphabets, symbols, or special characters.
+                       - Incorrect: "A52", "Roll: 12", "Page-1"
+                       - Correct: "52", "12", "1"
+                    
+                    2. **NO ALPHANUMERIC:** If the text on the page says "B-10" or "No. 5", extract only the number "10" or "5". Ignore all letters.
+
+                    3. **LEADING ZEROS:** You must remove any leading zeros from the numbers. Treat numbers mathematically.
+                       - If the roll number is "01", return "1".
+                       - If the page number is "005", return "5".
+                       - If the roll number is "099", return "99".
+
+                    4. **LOCATIONS:**
+                       - 'roll_number' is typically located in the top-right area.
+                       - 'page_number' is typically located at the bottom of the page.
+
+                    5. **MISSING DATA:** If you absolutely cannot find a value after checking carefully, return 'N/A'.
+
+                    ### TASKS:
+                    Extract 'roll_number' and 'page_number' applying the rules above.
+
                     Respond *only* with the JSON.
                     """
                 },
