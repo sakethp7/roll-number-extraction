@@ -170,7 +170,7 @@ def invoke_with_retry(llm, message, max_retries=3):
     """Invokes LLM with exponential backoff on 5xx errors."""
     for i in range(max_retries):
         try:
-            print("1")
+            # print("1")
             return llm.invoke(message)
         except Exception as e:
             if "503" in str(e) or "500" in str(e): # Check for 5xx errors
@@ -194,7 +194,7 @@ def process_page_pair_thread(
         base64_image_2 = encode_pil_image_to_base64(pil_image_2)
         message = create_2_page_llm_message(base64_image_1, base64_image_2)
         response = invoke_with_retry(llm, message)
-        print(response)
+        # print(response)
         results_list.append((pdf_index_1, response.roll_number_1, response.page_number_1))
         results_list.append((pdf_index_2, response.roll_number_2, response.page_number_2))
     except Exception as e:
